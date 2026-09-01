@@ -1,0 +1,29 @@
+{
+  "name": "sub-asms",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3100",
+    "build": "next build",
+    "build:site": "npm run build && node scripts/prepare-site-build.mjs",
+    "start": "next start -p 3100",
+    "db:generate": "prisma generate --schema prisma/schema.prisma",
+    "db:push": "prisma db push --schema prisma/schema.prisma",
+    "db:seed": "ts-node --compiler-options \"{\\\"module\\\":\\\"commonjs\\\"}\" prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "5.18.0",
+    "lucide-react": "^0.408.0",
+    "next": "14.2.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "prisma": "5.18.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.3"
+  }
+}

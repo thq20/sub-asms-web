@@ -1,0 +1,132 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AssetStatus {
+  UN_USED
+  IN_USED
+  BROKEN
+  MAINTENANCE
+}
+enum MasterDataType {
+  LOCATION
+  FLOOR
+  OWNER
+  PURCHASING_UNIT
+  ASSET_TYPE
+}
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+}
+enum TicketStatus {
+  DRAFT
+  SUBMITTED
+}
+
+model Asset {
+  id String @id @default(cuid())
+  barcode String @unique
+  prefix String
+  asmsBarcode String?
+  invoiceId String?
+  serialNumber String? @unique @db.VarChar(255)
+  quantity Int @default(1)
+  description String?
+  originalCost Decimal? @db.Decimal(15, 2)
+  assetTypeId String?
+  purchaseDate DateTime?
+  warrantyExpiry DateTime?
+  locationId String?
+  floorId String?
+  ownerId String?
+  purchasingUnitId String?
+  seatCode String?
+  status AssetStatus @default(UN_USED)
+  ticketId String?
+  note String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String @default("System")
+  updatedBy String @default("System")
+  @@index([barcode])
+  @@index([asmsBarcode])
+  @@index([status])
+  @@index([ownerId])
+  @@index([assetTypeId])
+  @@index([createdAt])
+}
+
+model BarcodeSequence {
+  prefix String @id
+  lastValue Int @default(0)
+  updatedAt DateTime @updatedAt
+}
+
+model MasterData {
+  id String @id @default(cuid())
+  type MasterDataType
+  name String
+  code String?
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([type, name])
+  @@index([type, active])
+}
+
+model AuditLog {
+  id String @id @default(cuid())
+  entityName String
+  entityId String
+  actionType AuditAction
+  oldValues Json?
+  newValues Json?
+  changedBy String
+  updateSource String @default("MANUAL")
+  timestamp DateTime @default(now())
+  @@index([entityName, entityId])
+  @@index([timestamp])
+}
+
+model FilterTemplate {
+  id String @id @default(cuid())
+  userId String @default("admin")
+  templateName String
+  filterCriteria Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([userId, templateName])
+}
+
+model DraftTicket {
+  id String @id @default(cuid())
+  sourceText String
+  ticketCode String?
+  parsedData Json
+  status TicketStatus @default(DRAFT)
+  submittedAt DateTime?
+  submittedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([status, createdAt])
+}
+
+model PortalTicket {
+  id          String   @id @default(cuid())
+  ticketCode  String   @unique
+  currentStep String   @default("REQUESTER")
+  flowData    Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   String   @default("Requester")
+  updatedBy   String   @default("Requester")
+  @@index([currentStep, updatedAt])
+}
