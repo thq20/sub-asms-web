@@ -1,68 +1,51 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, ChevronRight, ClipboardList, Link, Plus, Save } from "lucide-react";
+import { useEffect, useState } from "react";
+import { CheckCircle2, ClipboardList, Flag, Hand, Link, MonitorCog, Plus, Save, Send } from "lucide-react";
 import { dataApiCall } from "../../lib/supabaseBrowser";
 
 type Ticket = { id: string; ticketCode: string; currentStep: string; flowData: Record<string, Record<string, string>>; updatedAt: string };
-const steps = [
-  ["REQUESTER", "Requester", "Input"],
-  ["BUL_APPROVE", "BUL Approve", "Approval"],
-  ["ADMIN_PROCESS", "Admin Process", "Output"],
-  ["IT_SETUP", "IT setup", "Setup"],
-  ["ADMIN_CLOSE", "Admin Close", "Close"],
-];
-const fields: Record<string, Array<[string, string, string]>> = {
-  REQUESTER: [["requesterName", "Requester", "Tên người yêu cầu"], ["requestType", "Request Type", "Ví dụ: cấp phát tài sản"], ["requestDetail", "Request Detail", "Mô tả yêu cầu"]],
+type Field = [string, string, string];
+const steps = [["REQUESTER", "Requester", "Input"], ["BUL_APPROVE", "BUL Approve", "Approval"], ["ADMIN_PROCESS", "Admin Process", "Output"], ["IT_SETUP", "IT setup", "Setup"], ["ADMIN_CLOSE", "Admin Close", "Close"]];
+const basicFields: Record<string, Field[]> = {
+  REQUESTER: [["requesterName", "Requester", "Tên người yêu cầu"], ["requestType", "Request Type", "Ví dụ: Request ThinClient"], ["requestDetail", "Request Detail", "Mô tả yêu cầu"], ["building", "Building", "Vietinbank Building"]],
   BUL_APPROVE: [["approver", "Approver", "Tên người duyệt"], ["decision", "Decision", "Approved / Rejected"], ["comment", "Comment", "Ghi chú phê duyệt"]],
-  ADMIN_PROCESS: [["asmsBarcode", "Barcode ASMS", "ASMS-00001"], ["owner", "Owner", "NguyenVanA"], ["location", "Location", "VietNam01"], ["floor", "Floor", "Floor 3"], ["serialNumber", "Serial Number", "SN-001"], ["assetType", "Asset Type", "Laptop"], ["seatCode", "Seat Code", "A3-15"], ["note", "Note", "Sub-ASMS: SSD-00001 đã gửi tài sản cho nhân viên"]],
   IT_SETUP: [["technician", "Technician", "Tên kỹ thuật viên"], ["setupNote", "Setup Note", "Nội dung cài đặt"], ["setupCompletedAt", "Completed At", "YYYY-MM-DD"]],
   ADMIN_CLOSE: [["closingNote", "Closing Note", "Ghi chú đóng yêu cầu"], ["closedAt", "Closed At", "YYYY-MM-DD"]],
 };
+const outputColumns: Field[] = [["floor", "Floor *", "6"], ["lineNo", "No. *", "1"], ["barcode", "Barcode", "CA-047749; MO-033691"], ["owner", "Owner", "Hieu Truong Hoang - hieuth3"], ["reason", "Reason", "Lý do cấp phát"], ["department", "Department", "FSO.CT.FHM.FCT"], ["projectCode", "Project Code", "NSIB2"], ["assetName", "Asset Name", "ThinClient"], ["seatCode", "Seat code", "VTB.A.6.109"], ["expectedDate", "Expected Date", "MM/DD/YYYY"], ["note", "Note", "Sub-ASMS: SSD-00001 đã gửi tài sản"]];
+const asmsConnection: Field[] = [["location", "Building / Location", "VietNam01"], ["asmsBarcode", "Barcode ASMS", "Không bắt buộc"], ["serialNumber", "Serial Number", "SN-001"], ["assetType", "Asset Type", "Laptop"]];
 const defaults = () => ({ REQUESTER: {}, BUL_APPROVE: {}, ADMIN_PROCESS: {}, IT_SETUP: {}, ADMIN_CLOSE: {} });
+
+function stepIcon(id: string) {
+  if (id === "REQUESTER") return <Send size={19} />;
+  if (id === "BUL_APPROVE") return <Hand size={19} />;
+  if (id === "ADMIN_PROCESS") return <MonitorCog size={19} />;
+  if (id === "IT_SETUP") return <CheckCircle2 size={19} />;
+  return <Flag size={19} />;
+}
 
 export default function PortalPage() {
   const [tickets, setTickets] = useState<Ticket[]>([]), [selected, setSelected] = useState<Ticket | null>(null), [step, setStep] = useState("REQUESTER"), [flash, setFlash] = useState("");
+  const publicBasePath = process.env.NEXT_PUBLIC_DEPLOY_BASE_PATH || "";
+  const portalEntry = process.env.NEXT_PUBLIC_PORTAL_ENTRY || "/portal/index.html";
   const call = (url: string, init?: RequestInit) => dataApiCall(url, init);
   const notify = (message: string) => { setFlash(message); window.setTimeout(() => setFlash(""), 2800); };
   const load = async () => {
-    try {
-      const result = await call("/api/portal/tickets"); setTickets(result);
-      const fromUrl = new URLSearchParams(window.location.search).get("ticket");
-      const active = result.find((item: Ticket) => item.id === fromUrl) || result[0] || null;
-      if (active) { setSelected(active); setStep(active.currentStep); }
-    } catch (error: any) { notify(error.message); }
+    try { const result = await call("/api/portal/tickets"); setTickets(result); const fromUrl = new URLSearchParams(window.location.search).get("ticket"); const active = result.find((item: Ticket) => item.id === fromUrl) || result[0] || null; if (active) { setSelected(active); setStep(active.currentStep); } } catch (error: any) { notify(error.message); }
   };
   useEffect(() => { load(); }, []);
   const create = async () => {
-    try {
-      const ticket = await call("/api/portal/tickets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ flowData: defaults() }) });
-      setTickets(items => [ticket, ...items]); setSelected(ticket); setStep("REQUESTER"); notify("Đã tạo ticket Portal.");
-    } catch (error: any) { notify(error.message); }
+    try { const ticket = await call("/api/portal/tickets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ flowData: defaults() }) }); setTickets(items => [ticket, ...items]); setSelected(ticket); setStep("REQUESTER"); notify("Đã tạo ticket Portal."); } catch (error: any) { notify(error.message); }
   };
   const values = selected?.flowData?.[step] || {};
   const updateField = (name: string, value: string) => setSelected(current => current ? { ...current, flowData: { ...defaults(), ...(current.flowData || {}), [step]: { ...(current.flowData?.[step] || {}), [name]: value } } } : current);
   const save = async () => {
     if (!selected) return;
-    try {
-      const updated = await call("/api/portal/tickets/" + selected.id, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ flowData: selected.flowData, currentStep: step, updatedBy: step === "ADMIN_PROCESS" ? "Admin" : step }) });
-      setSelected(updated); setTickets(items => items.map(item => item.id === updated.id ? updated : item)); notify("Đã lưu " + steps.find(item => item[0] === step)?.[1] + ".");
-    } catch (error: any) { notify(error.message); }
+    try { const updated = await call("/api/portal/tickets/" + selected.id, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ flowData: selected.flowData, currentStep: step, updatedBy: step === "ADMIN_PROCESS" ? "Admin" : step }) }); setSelected(updated); setTickets(items => items.map(item => item.id === updated.id ? updated : item)); notify("Đã lưu " + steps.find(item => item[0] === step)?.[1] + "."); } catch (error: any) { notify(error.message); }
   };
-  const shareLink = selected && typeof window !== "undefined" ? window.location.origin + "/portal?ticket=" + selected.id : "";
+  const shareLink = selected && typeof window !== "undefined" ? window.location.origin + publicBasePath + portalEntry + "?ticket=" + selected.id : "";
+  const ticketInfo = selected?.flowData?.REQUESTER || {};
 
-  return <div className="portal-shell">
-    <header className="portal-top"><div><a href="/" className="portal-brand">Sub-Portal</a><span>Request workflow simulator</span></div><button className="button" onClick={create}><Plus size={16} />Tạo ticket</button></header>
-    <main className="portal-main">
-      <aside className="portal-left"><div className="portal-title"><ClipboardList size={18} /><span>Tickets</span></div>{tickets.length ? tickets.map(ticket => <button className={"portal-ticket " + (selected?.id === ticket.id ? "selected" : "")} onClick={() => { setSelected(ticket); setStep(ticket.currentStep); }} key={ticket.id}><b>{ticket.ticketCode}</b><small>{ticket.currentStep.replace("_", " ")}</small></button>) : <p className="portal-empty">Chưa có ticket. Hãy tạo ticket đầu tiên.</p>}
-        {selected && <><div className="portal-title flow-title">Flow</div><div className="flow">{steps.map(([id, name, kind], index) => <button className={"flow-step " + (step === id ? "active" : "")} onClick={() => setStep(id)} key={id}><span className="flow-number">{index + 1}</span><span><b>{name}</b><small>{kind}</small></span>{index < steps.length - 1 && <ChevronRight size={14} />}</button>)}</div></>}
-      </aside>
-      <section className="portal-content">{selected ? <><div className="portal-section-head"><div><p className="portal-kicker">{steps.find(item => item[0] === step)?.[2]}</p><h1>{steps.find(item => item[0] === step)?.[1]}</h1><p className="muted">{selected.ticketCode}</p></div><span className="portal-status"><CheckCircle2 size={15} />{selected.currentStep.replace("_", " ")}</span></div>
-        {step === "ADMIN_PROCESS" && <div className="portal-notice">Đây là Output của Admin. Sub-ASMS đọc các trường Owner, Location, Floor… và tự bốc tách mã Sub-ASMS từ Note qua link ticket.</div>}
-        <div className="portal-form">{fields[step].map(([name, label, placeholder]) => <label key={name}>{label}<input value={values[name] || ""} onChange={event => updateField(name, event.target.value)} placeholder={placeholder} /></label>)}</div>
-        <div className="portal-actions"><button className="button" onClick={save}><Save size={16} />Lưu {steps.find(item => item[0] === step)?.[1]}</button></div>
-        <div className="portal-link"><Link size={15} /><span>Link để dán vào Sub-ASMS:</span><code>{shareLink}</code></div>
-      </> : <div className="portal-empty large">Tạo hoặc chọn một ticket để bắt đầu flow.</div>}</section>
-    </main>{flash && <div className="flash">{flash}</div>}
-  </div>;
+  return <div className="portal-shell portal-real-shell"><header className="portal-top"><div><a href={publicBasePath ? publicBasePath + "/index.html" : "/"} className="portal-brand">Sub-Portal</a><span>Ticket workflow simulator</span></div><button className="button" onClick={create}><Plus size={16} />Tạo ticket</button></header><main className="portal-real-main"><aside className="portal-left portal-ticket-list"><div className="portal-title"><ClipboardList size={18} /><span>Tickets</span></div>{tickets.length ? tickets.map(ticket => <button className={"portal-ticket " + (selected?.id === ticket.id ? "selected" : "")} onClick={() => { setSelected(ticket); setStep(ticket.currentStep); }} key={ticket.id}><b>{ticket.ticketCode}</b><small>{ticket.currentStep.replaceAll("_", " ")}</small></button>) : <p className="portal-empty">Chưa có ticket. Hãy tạo ticket đầu tiên.</p>}</aside><section className="portal-real-content">{selected ? <><section className="workflow-card"><div className="workflow-heading">Workflow of Ticket: <b>{selected.ticketCode.replace(/\D/g, "") || selected.ticketCode}</b><span className="portal-status"><CheckCircle2 size={15} />{selected.currentStep.replaceAll("_", " ")}</span></div><div className="workflow-diagram">{steps.map(([id, name], index) => <div className={"workflow-node-wrap workflow-" + id.toLowerCase()} key={id}><button className={"workflow-node " + (step === id ? "active " : "") + (selected.currentStep === id ? "current" : "")} onClick={() => setStep(id)}>{stepIcon(id)}<span>{name}</span></button>{index < 2 && <i className="workflow-line" />}{id === "ADMIN_PROCESS" && <><i className="workflow-branch branch-setup" /><i className="workflow-branch branch-close" /></>}</div>)}</div><p className="workflow-help">Chọn một biểu tượng trong sơ đồ để xem và nhập thông tin cho từng phase.</p></section><section className="portal-section portal-ticket-information"><div className="section-title"><h1>Ticket Information</h1><div><button className="mini-tab">New request</button><button className="mini-tab">Ticket History</button><button className="mini-tab">Share</button></div></div><div className="ticket-summary"><p><b>Title:</b><span>{ticketInfo.requestDetail || "Request Asset"}</span></p><p><b>Request Type:</b><span>{ticketInfo.requestType || "Request Asset"}</span></p><p><b>Owner:</b><span>{ticketInfo.requesterName || "Chưa cập nhật"}</span></p><p><b>Status:</b><span className="processing-label">{selected.currentStep.replaceAll("_", " ")}</span></p><p><b>Building:</b><span>{ticketInfo.building || "Chưa cập nhật"}</span></p></div></section><section className="portal-section"><div className="section-title"><h1>Phase Information</h1><span className="muted">{steps.find(item => item[0] === step)?.[1]}</span></div></section>{step !== "ADMIN_PROCESS" ? <section className="portal-section"><div className="section-title"><h1>{step === "REQUESTER" ? "Input Information" : steps.find(item => item[0] === step)?.[1]}</h1></div><div className="phase-tabs"><button className="phase-tab active">{step === "REQUESTER" ? "From Ticket Detail" : "Information"}</button>{step === "REQUESTER" && <button className="phase-tab">From BUL&apos;s Approval</button>}</div><div className="portal-form portal-real-form">{(basicFields[step] || []).map(([name, label, placeholder]) => <label key={name}>{label}<input value={values[name] || ""} onChange={event => updateField(name, event.target.value)} placeholder={placeholder} /></label>)}</div><div className="portal-actions"><button className="button" onClick={save}><Save size={16} />Lưu thông tin</button></div></section> : <section className="portal-section output-section"><div className="section-title"><h1>Output Information</h1><span className="output-badge">Admin Process</span></div><div className="phase-tabs"><button className="phase-tab active">To Install and Deliver</button></div><p className="portal-output-intro">Nhập Output như Portal thực tế. Sub-ASMS sử dụng <b>Note</b> để nhận diện mã Sub-ASMS; các trường còn lại có thể chỉnh trước khi điều chuyển.</p><div className="output-scroll"><table className="output-table"><thead><tr>{outputColumns.map(([, label]) => <th key={label}>{label}</th>)}</tr></thead><tbody><tr>{outputColumns.map(([name, label, placeholder]) => <td key={name}><input aria-label={label} value={values[name] || ""} onChange={event => updateField(name, event.target.value)} placeholder={placeholder} /></td>)}</tr></tbody></table></div><div className="output-details"><h3>Output details</h3><div className="portal-form portal-real-form">{outputColumns.map(([name, label, placeholder]) => <label key={name}>{label}<input value={values[name] || ""} onChange={event => updateField(name, event.target.value)} placeholder={placeholder} /></label>)}</div><h3>ASMS connection</h3><div className="portal-form portal-real-form">{asmsConnection.map(([name, label, placeholder]) => <label key={name}>{label}<input value={values[name] || ""} onChange={event => updateField(name, event.target.value)} placeholder={placeholder} /></label>)}</div></div><div className="portal-actions"><button className="button" onClick={save}><Save size={16} />Lưu Output</button></div></section>}<div className="portal-link"><Link size={15} /><span>Link để dán vào Sub-ASMS:</span><code>{shareLink}</code></div></> : <div className="portal-empty large">Tạo hoặc chọn một ticket để bắt đầu flow.</div>}</section></main>{flash && <div className="flash">{flash}</div>}</div>;
 }
