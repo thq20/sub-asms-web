@@ -1,3 +1,3 @@
-export const STATUS_LABEL: Record<string, string> = { UN_USED: "Chưa sử dụng", IN_USED: "Đang sử dụng", BROKEN: "Hỏng", MAINTENANCE: "Bảo trì" };
-export const MASTER_LABEL: Record<string, string> = { LOCATION: "Location", FLOOR: "Floor", OWNER: "Owner", PURCHASING_UNIT: "Purchasing Unit", ASSET_TYPE: "Asset Type" };
+export const STATUS_LABEL: Record<string, string> = { UN_USED: "UN_USED", IN_USED: "IN_USED", BROKEN: "BROKEN", MAINTENANCE: "MAINTENANCE" };
+export const MASTER_LABEL: Record<string, string> = { LOCATION: "Building", FLOOR: "Floor", OWNER: "Owner", PURCHASING_UNIT: "Purchasing Unit", MAIN_ASSET_TYPE: "Main ASMS Asset Type", SUB_ASSET_TYPE: "Sub-ASMS Asset Type", ASSET_TYPE: "Asset Type cũ", REQUEST_TYPE: "Request Type", APPROVER: "Approver", TECHNICIAN: "Technician", SETUP_NOTE: "Setup Note", CLOSING_NOTE: "Closing Note" };
 export const ASSET_FIELDS = ["barcode","asmsBarcode","serialNumber","invoiceId","status","locationId","floorId","seatCode","ownerId","purchasingUnitId","assetTypeId","originalCost","description","ticketId","purchaseDate","warrantyExpiry","note"] as const;

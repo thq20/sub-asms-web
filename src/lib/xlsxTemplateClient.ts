@@ -23,7 +23,8 @@ function zip(files: Array<{ name: string; text: string }>) {
 
 export function createImportTemplate(master: Master[]) {
   const names = (type: string) => master.filter(item => item.type === type && item.name?.trim()).map(item => item.name!.trim()).filter((name, index, values) => values.indexOf(name) === index);
-  const listEntries = Object.entries({ assetType: names("ASSET_TYPE"), location: names("LOCATION"), floor: names("FLOOR"), owner: names("OWNER"), purchasingUnit: names("PURCHASING_UNIT"), status: ["UN_USED", "IN_USED", "MAINTENANCE", "BROKEN"] });
+  const scopedSubTypes = names("SUB_ASSET_TYPE");
+  const listEntries = Object.entries({ assetType: [...scopedSubTypes, ...names("ASSET_TYPE")], location: names("LOCATION"), floor: names("FLOOR"), owner: names("OWNER"), purchasingUnit: names("PURCHASING_UNIT"), status: ["UN_USED", "IN_USED", "MAINTENANCE", "BROKEN"] });
   const headers = ["prefix", "assetType", "serialNumber", "asmsBarcode", "invoiceId", "description", "originalCost", "location", "floor", "owner", "purchasingUnit", "seatCode", "ticketId", "status", "purchaseDate", "warrantyExpiry", "note"];
   const cells = headers.map((header, index) => `<c r="${column(index)}1" t="inlineStr"><is><t>${header}</t></is></c>`).join("");
   const listHeader = listEntries.map(([label], index) => `<c r="${column(index)}1" t="inlineStr"><is><t>${escapeXml(label)}</t></is></c>`).join("");
