@@ -75,6 +75,7 @@ export async function dataApiCall(url: string, init: RequestInit = {}): Promise<
     }
     if (method === "DELETE") {
       const requestedType = String(p.get("type") || ""), requestedId = String(p.get("id") || ""), removeAll = p.get("all") === "true";
+      if (removeAll ? !requestedType.trim() : !requestedId.trim()) throw new Error("Chọn mục hoặc giá trị cần xóa.");
       const items = removeAll ? await rest(`MasterData?type=eq.${encodeURIComponent(requestedType)}&active=eq.true&select=*`) : await rest(`MasterData?id=eq.${encodeURIComponent(requestedId)}&active=eq.true&select=*`);
       if (!items.length) return { removed: 0 };
       const ids = new Set(items.map((item: any) => item.id));
@@ -83,7 +84,9 @@ export async function dataApiCall(url: string, init: RequestInit = {}): Promise<
       for (const item of items.filter((item: any) => item.type === "MAIN_ASSET_TYPE")) { const main = await rest("PortalTicket?select=flowData&ticketCode=like.MAIN-ASMS-*"); if (main.some((record: any) => String(record.flowData?.MAIN_ASSET?.assetType || "").trim().toLowerCase() === String(item.name).trim().toLowerCase())) throw new Error("Không thể xóa: Asset Type đang được ít nhất một tài sản Main ASMS sử dụng."); }
       const checks: Record<string, string> = { LOCATION: "locationId", FLOOR: "floorId", OWNER: "ownerId", PURCHASING_UNIT: "purchasingUnitId" };
       for (const item of items) { const field = checks[item.type]; if (field) { const linked = await rest(`Asset?select=id&${field}=eq.${encodeURIComponent(item.id)}&limit=1`); if (linked[0]) throw new Error("Không thể xóa: " + item.name + " đang được tài sản sử dụng."); } }
-      await Promise.all(items.map((item: any) => rest(`MasterData?id=eq.${encodeURIComponent(item.id)}`, { method: "PATCH", body: JSON.stringify({ active: false, updatedAt: now() }) }, "return=minimal")));
+      // Clear only the values we checked, in one statement; categories are fixed in Settings.
+      const selectedIds = items.map((item: any) => `"${String(item.id).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`).join(",");
+      await rest(`MasterData?id=in.(${encodeURIComponent(selectedIds)})${removeAll ? `&type=eq.${encodeURIComponent(requestedType)}` : ""}`, { method: "PATCH", body: JSON.stringify({ active: false, updatedAt: now() }) }, "return=minimal");
       return { removed: items.length };
     }
   }
