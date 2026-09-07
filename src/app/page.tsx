@@ -93,7 +93,8 @@ function HomeWorkspace({ tab, setTab }: { tab: SubTab; setTab: (tab: SubTab) => 
       const result = await call("/api/assets?" + params.toString()); setAssets(result.items); setTotal(result.total);
     } catch (error: any) { notify(error.message); }
   };
-  useEffect(() => { loadAll(); const refresh = () => { loadAll(); loadAssets(); }; window.addEventListener("master-data-changed", refresh); window.addEventListener("inventory-changed", refresh); return () => { window.removeEventListener("master-data-changed", refresh); window.removeEventListener("inventory-changed", refresh); }; }, [page, pageSize, search, mainBarcodeQuery, subBarcodeQuery, status, assetTypeId, locationId, ownerId]);
+  useEffect(() => { loadAll(); }, []);
+  useEffect(() => { const refresh = () => { loadAll(); loadAssets(); }; window.addEventListener("master-data-changed", refresh); window.addEventListener("inventory-changed", refresh); return () => { window.removeEventListener("master-data-changed", refresh); window.removeEventListener("inventory-changed", refresh); }; }, [page, pageSize, search, mainBarcodeQuery, subBarcodeQuery, status, assetTypeId, locationId, ownerId]);
   useEffect(() => { loadAssets(); }, [page, pageSize, search, mainBarcodeQuery, subBarcodeQuery, status, assetTypeId, locationId, ownerId]);
 
   const masterIdFor = async (type: string, value?: string) => {
