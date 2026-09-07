@@ -20,6 +20,7 @@ enum MasterDataType {
   OWNER
   PURCHASING_UNIT
   ASSET_TYPE
+  PROCUREMENT_CODE
 }
 enum AuditAction {
   CREATE
@@ -37,6 +38,7 @@ model Asset {
   prefix String
   asmsBarcode String?
   invoiceId String?
+  procurementCode String?
   serialNumber String? @unique @db.VarChar(255)
   quantity Int @default(1)
   description String?
