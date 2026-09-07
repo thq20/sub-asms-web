@@ -1,0 +1,14 @@
+const assert=require('node:assert/strict');
+process.env.TS_NODE_COMPILER_OPTIONS=JSON.stringify({module:'CommonJS',moduleResolution:'node'});
+require('ts-node/register/transpile-only');
+const {assetChanged,editPayload,warrantyDate}=require('../src/lib/assetEdit');
+const asset={status:'UN_USED',purchaseDate:'2026-01-31T00:00:00Z',warrantyExpiry:'2026-02-28T00:00:00Z',originalCost:'1000',serialNumber:null};
+assert.equal(assetChanged({...asset,purchaseDate:'2026-01-31',warrantyExpiry:'2026-02-28',serialNumber:'',originalCost:1000},asset),false);
+assert.equal(assetChanged({...asset,invoiceId:'Invoice-2'},asset),true);
+assert.equal(assetChanged({...asset,serialNumber:'SN-2'},asset),true);
+assert.equal(warrantyDate('2026-01-31',1),'2026-02-28');
+assert.equal(warrantyDate('2024-01-31',1),'2024-02-29');
+assert.equal(warrantyDate('2024-02-29',12),'2025-02-28');
+assert.equal(editPayload({...asset,asmsBarcode:' ca-00123 '}).asmsBarcode,'CA-00123');
+assert.equal(editPayload({...asset,warrantyMonths:0}).warrantyExpiry,'2026-01-31');
+console.log('PASS: unchanged form disables Save, meaningful edits detected, barcode preserved, calendar warranty dates clamped.');
