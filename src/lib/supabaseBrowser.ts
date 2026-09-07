@@ -54,6 +54,22 @@ export async function dataApiCall(url: string, init: RequestInit = {}): Promise<
   const method = (init.method || "GET").toUpperCase(), body = init.body ? JSON.parse(String(init.body)) : {};
   const [path, query = ""] = url.split("?"); const p = new URLSearchParams(query);
 
+  if (path === "/api/inventory/list") {
+    const readAll = async (table: string, filter = "") => {
+      const rows: any[] = [];
+      for (let offset = 0; ; offset += 500) {
+        const page = await rest(`${table}?select=*&order=id.asc&limit=500&offset=${offset}${filter}`);
+        rows.push(...page); if (page.length < 500) return rows;
+      }
+    };
+    const [sub, main, master] = await Promise.all([readAll("Asset"), readAll("PortalTicket", "&ticketCode=like.MAIN-ASMS-*"), readAll("MasterData")]);
+    const names = new Map(master.map((item: any) => [item.id, item.name]));
+    return [...main.filter((item: any) => item.flowData?.MAIN_ASSET).map((item: any) => ({ ...item.flowData.MAIN_ASSET, id: item.id, source: "MAIN" })), ...sub.map((item: any) => ({ ...item, source: "SUB", owner: names.get(item.ownerId) || "" }))];
+  }
+  if (path === "/api/inventory/manage" && method === "POST") {
+    if (!["MAIN","SUB"].includes(body.scope) || !["RESET","DELETE"].includes(body.action) || !Array.isArray(body.ids) || !body.ids.length || body.ids.some((value: any) => typeof value !== "string" || !value.trim())) throw new Error("Chọn phạm vi và tài sản hợp lệ.");
+    return rest("rpc/inventory_manage", { method: "POST", body: JSON.stringify({ p_scope: body.scope, p_action: body.action, p_ids: [...new Set(body.ids)] }) });
+  }
   if (path === "/api/dashboard") {
     const [recent, all, available, inUse, maintenance, broken, drafts] = await Promise.all([
       restPage("Asset?select=status,updatedAt,barcode,serialNumber,id&order=updatedAt.desc&limit=5"), restPage("Asset?select=id&limit=1"), restPage("Asset?select=id&status=eq.UN_USED&limit=1"), restPage("Asset?select=id&status=eq.IN_USED&limit=1"), restPage("Asset?select=id&status=eq.MAINTENANCE&limit=1"), restPage("Asset?select=id&status=eq.BROKEN&limit=1"), restPage("DraftTicket?select=id&status=eq.DRAFT&limit=1")
@@ -82,6 +98,9 @@ export async function dataApiCall(url: string, init: RequestInit = {}): Promise<
       const assetTypeItems = items.filter((item: any) => ["ASSET_TYPE", "SUB_ASSET_TYPE"].includes(item.type));
       if (assetTypeItems.length) { const linked = await rest("Asset?select=id,assetTypeId"); if (linked.some((asset: any) => ids.has(asset.assetTypeId))) throw new Error("Không thể xóa: Asset Type đang được ít nhất một tài sản Sub-ASMS sử dụng."); }
       for (const item of items.filter((item: any) => item.type === "MAIN_ASSET_TYPE")) { const main = await rest("PortalTicket?select=flowData&ticketCode=like.MAIN-ASMS-*"); if (main.some((record: any) => String(record.flowData?.MAIN_ASSET?.assetType || "").trim().toLowerCase() === String(item.name).trim().toLowerCase())) throw new Error("Không thể xóa: Asset Type đang được ít nhất một tài sản Main ASMS sử dụng."); }
+      for (const item of items.filter((item: any) => item.type === "PROCUREMENT_CODE")) {
+        if ((await rest(`Asset?select=id&procurementCode=eq.${encodeURIComponent(item.name)}&limit=1`))[0]) throw new Error("Không thể xóa: Code mua sắm đang được tài sản sử dụng.");
+      }
       const checks: Record<string, string> = { LOCATION: "locationId", FLOOR: "floorId", OWNER: "ownerId", PURCHASING_UNIT: "purchasingUnitId" };
       for (const item of items) { const field = checks[item.type]; if (field) { const linked = await rest(`Asset?select=id&${field}=eq.${encodeURIComponent(item.id)}&limit=1`); if (linked[0]) throw new Error("Không thể xóa: " + item.name + " đang được tài sản sử dụng."); } }
       // Clear only the values we checked, in one statement; categories are fixed in Settings.
@@ -166,7 +185,9 @@ export async function dataApiCall(url: string, init: RequestInit = {}): Promise<
   }
   if (path === "/api/tickets") return rest("DraftTicket?order=createdAt.desc&limit=100");
   if (path === "/api/tickets/parse") { const parsedData = parseTicket(body.sourceText); return (await rest("DraftTicket", { method: "POST", body: JSON.stringify({ id: id(), sourceText: body.sourceText, ticketCode: parsedData.ticketCode, parsedData, status: "DRAFT", createdAt: now(), updatedAt: now() }) }))[0]; }
-  if (path === "/api/assets/batch") return rest("rpc/asset_batch_create", { method: "POST", body: JSON.stringify({ payload: body }) });
+  if (path === "/api/assets/batch") {
+    return rest("rpc/asset_batch_create_catalog", { method: "POST", body: JSON.stringify({ payload: body }) });
+  }
   if (path === "/api/assets") {
     const filters = ["select=*", "order=updatedAt.desc"];
     if (p.get("q")) { const term = encodeURIComponent(`*${p.get("q")}*`); filters.push(`or=(barcode.ilike.${term},serialNumber.ilike.${term},asmsBarcode.ilike.${term},description.ilike.${term})`); }
@@ -180,11 +201,11 @@ export async function dataApiCall(url: string, init: RequestInit = {}): Promise<
   }
   if (path.startsWith("/api/assets/")) {
     const assetId = encodeURIComponent(path.split("/").pop() || "");
-    if (method === "PATCH") { const oldValues = (await rest(`Asset?id=eq.${assetId}&select=*`))[0]; if (!oldValues) throw new Error("Không tìm thấy tài sản."); const { auditSource = "MANUAL", ...assetValues } = body; const updated = (await rest(`Asset?id=eq.${assetId}`, { method: "PATCH", body: JSON.stringify({ ...assetValues, updatedAt: now(), updatedBy: "Admin" }) }))[0]; await rest("AuditLog", { method: "POST", body: JSON.stringify({ id: id(), entityName: "Asset", entityId: updated.id, actionType: "UPDATE", oldValues, newValues: updated, changedBy: "Admin", updateSource: auditSource, timestamp: now() }) }); return updated; }
-    if (method === "DELETE") return rest(`Asset?id=eq.${assetId}`, { method: "DELETE" }, "return=minimal");
+    if (method === "PATCH") return rest("rpc/asset_edit", { method: "POST", body: JSON.stringify({ p_id: decodeURIComponent(assetId), p_patch: body, p_expected: body.expectedUpdatedAt || null }) });
+    if (method === "DELETE") return dataApiCall("/api/inventory/manage", { method: "POST", body: JSON.stringify({ scope: "SUB", action: "DELETE", ids: [decodeURIComponent(assetId)] }) });
   }
   if (path === "/api/assets/usage") {
-    const [assets, audits, master] = await Promise.all([rest("Asset?select=*"), rest("AuditLog?select=entityId,oldValues,newValues"), rest("MasterData?select=id,name")]);
+    const [assets, audits, master] = await Promise.all([rest("Asset?select=*"), rest("AuditLog?entityName=eq.Asset&select=entityId,oldValues,newValues,timestamp&order=timestamp.asc"), rest("MasterData?select=id,name")]);
     const names = new Map(master.map((item: any) => [item.id, String(item.name || "").toLowerCase()]));
     const wasTransferred = new Set((audits || []).filter((log: any) => {
       const before = log.oldValues || {}, after = log.newValues || {}; const owner = after.ownerId || before.ownerId;
@@ -192,34 +213,22 @@ export async function dataApiCall(url: string, init: RequestInit = {}): Promise<
     }).map((log: any) => log.entityId));
     const sixMonthsAgo = new Date(); sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
     const usedIds = assets.filter((asset: any) => wasTransferred.has(asset.id) && Boolean(asset.ticketId) && names.get(asset.purchasingUnitId) !== "store").map((asset: any) => asset.id);
-    const utilizeIds = assets.filter((asset: any) => !wasTransferred.has(asset.id) && asset.purchaseDate && new Date(asset.purchaseDate) <= sixMonthsAgo && names.get(asset.purchasingUnitId) !== "store").map((asset: any) => asset.id);
-    return { usedIds, utilizeIds };
+    const usedSet = new Set(usedIds), usedAtById: Record<string, string> = {};
+    for (const log of audits || []) {
+      if (!usedSet.has(log.entityId) || usedAtById[log.entityId]) continue;
+      const before = log.oldValues || {}, after = log.newValues || {}, owner = after.ownerId || before.ownerId;
+      if (owner && names.get(owner) !== "store" && log.timestamp) usedAtById[log.entityId] = log.timestamp;
+    }
+    const utilizeIds = assets.filter((asset: any) => !wasTransferred.has(asset.id) && asset.status === "UN_USED" && names.get(asset.ownerId) === "store" && asset.purchaseDate && new Date(Math.max(new Date(asset.purchaseDate).getTime(), new Date(asset.createdAt).getTime())) <= sixMonthsAgo && names.get(asset.purchasingUnitId) !== "store").map((asset: any) => asset.id);
+    return { usedIds, utilizeIds, usedAtById };
   }
   if (path === "/api/inventory/reset" && method === "POST") {
-    const stores = await rest("MasterData?type=eq.OWNER&name=eq.Store&select=*");
-    const store = stores[0] || (await rest("MasterData", { method: "POST", body: JSON.stringify({ id: id(), type: "OWNER", name: "Store", active: true, createdAt: now(), updatedAt: now() }) }))[0];
-    const subIds: string[] = body.all || body.scope === "SUB" ? (await rest("Asset?select=id")).map((asset: any) => asset.id) : (body.subIds || []);
-    const mainIds: string[] = body.all || body.scope === "MAIN" ? (await rest("PortalTicket?select=id&ticketCode=like.MAIN-ASMS-*")).map((asset: any) => asset.id) : (body.mainIds || []);
-    for (const assetId of subIds) {
-      const oldValues = (await rest(`Asset?id=eq.${encodeURIComponent(assetId)}&select=*`))[0]; if (!oldValues) continue;
-      const updated = (await rest(`Asset?id=eq.${encodeURIComponent(assetId)}`, { method: "PATCH", body: JSON.stringify({ ownerId: store.id, status: "UN_USED", updatedAt: now(), updatedBy: "Reset về kho" }) }))[0];
-      await rest("AuditLog", { method: "POST", body: JSON.stringify({ id: id(), entityName: "Asset", entityId: assetId, actionType: "RESET", oldValues, newValues: updated, changedBy: "Admin", updateSource: "MANUAL", timestamp: now() }) });
-    }
-    for (const assetId of mainIds) {
-      const old = (await rest(`PortalTicket?id=eq.${encodeURIComponent(assetId)}&select=*`))[0]; if (!old) continue;
-      const asset = { ...(old.flowData?.MAIN_ASSET || {}), owner: "Store", status: "UN_USED", updatedAt: now() };
-      await rest(`PortalTicket?id=eq.${encodeURIComponent(assetId)}`, { method: "PATCH", body: JSON.stringify({ flowData: { ...old.flowData, MAIN_ASSET: asset }, updatedAt: now(), updatedBy: "Reset về kho" }) });
-    }
-    return { sub: subIds.length, main: mainIds.length };
+    if (!["MAIN", "SUB"].includes(body.scope)) throw new Error("Chọn Main ASMS hoặc Sub-ASMS trước khi Reset.");
+    const ids = body.all ? (await dataApiCall("/api/inventory/list")).filter((row: any) => row.source === body.scope).map((row: any) => row.id) : body.scope === "MAIN" ? body.mainIds : body.subIds;
+    return dataApiCall("/api/inventory/manage", { method: "POST", body: JSON.stringify({ scope: body.scope, action: "RESET", ids }) });
   }
   if (path.startsWith("/api/assets/") && path.endsWith("/utilize") && method === "POST") {
-    const assetId = encodeURIComponent(path.split("/")[3] || "");
-    const stores = await rest("MasterData?type=eq.PURCHASING_UNIT&name=eq.Store&select=*");
-    const store = stores[0] || (await rest("MasterData", { method: "POST", body: JSON.stringify({ id: id(), type: "PURCHASING_UNIT", name: "Store", active: true, createdAt: now(), updatedAt: now() }) }))[0];
-    const oldValues = (await rest(`Asset?id=eq.${assetId}&select=*`))[0]; if (!oldValues) throw new Error("Không tìm thấy tài sản.");
-    const updated = (await rest(`Asset?id=eq.${assetId}`, { method: "PATCH", body: JSON.stringify({ purchasingUnitId: store.id, updatedAt: now(), updatedBy: "Utilize" }) }))[0];
-    await rest("AuditLog", { method: "POST", body: JSON.stringify({ id: id(), entityName: "Asset", entityId: updated.id, actionType: "UTILIZE", oldValues, newValues: updated, changedBy: "Admin", updateSource: "MANUAL", timestamp: now() }) });
-    return updated;
+    return rest("rpc/asset_utilize", { method: "POST", body: JSON.stringify({ p_id: path.split("/")[3] }) });
   }
   if (path.startsWith("/api/audit/")) return rest(`AuditLog?entityName=eq.Asset&entityId=eq.${encodeURIComponent(path.split("/").pop() || "")}&order=timestamp.desc`);
   throw new Error("Chức năng này chưa được hỗ trợ ở chế độ Data API.");

@@ -18,13 +18,16 @@ export async function restoreSession(): Promise<AuthSession | null> {
   if (!session) return null;
   if (!hasExpired(session)) return session;
   if (!session.refresh_token || !base || !key) { clearSession(); return null; }
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 4000);
   try {
-    const response = await fetch(base + "/auth/v1/token?grant_type=refresh_token", { method: "POST", headers: { apikey: key, "Content-Type": "application/json" }, body: JSON.stringify({ refresh_token: session.refresh_token }) });
+    const response = await fetch(base + "/auth/v1/token?grant_type=refresh_token", { method: "POST", headers: { apikey: key, "Content-Type": "application/json" }, body: JSON.stringify({ refresh_token: session.refresh_token }), signal: controller.signal });
     const body = await response.json().catch(() => ({}));
     if (!response.ok || !body.access_token) { clearSession(); return null; }
     const refreshed: AuthSession = { access_token: body.access_token, refresh_token: body.refresh_token || session.refresh_token, expires_at: body.expires_at, user: { email: body.user?.email || session.user?.email } };
     saveSession(refreshed); return refreshed;
   } catch { clearSession(); return null; }
+  finally { window.clearTimeout(timeout); }
 }
 export function captureSessionFromUrl() {
   if (typeof window === "undefined") return null;
